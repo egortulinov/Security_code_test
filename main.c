@@ -54,6 +54,7 @@ bool FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)     // функция ч
 }
 
 
+
 int main()
 {
 
