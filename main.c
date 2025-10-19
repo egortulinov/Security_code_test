@@ -51,7 +51,7 @@ typedef struct                              // структура данных �
     uint8_t information[HDLC_INFO_SIZE];    // информационное поле HDLC
 } hdlc_packet_typedef;
 
-typedef struct                          // структура с вспомогательными полями для передачи данных
+typedef struct                          // структура для передачи кадра
 {
     uint8_t tx_stage;                   // текущая стадия передачи данных (0 - передача флааг FD, 1 - адрес, 2 - управление, 3 - информация, 4 - fcs, 5 - FD)
     uint8_t current_byte;               // номер байта, который мы отправляем
@@ -59,9 +59,9 @@ typedef struct                          // структура с вспомог�
     uint8_t info_index;                 // индекс для передачи данных информационного поля (поскольку не влазит в fifo)
     uint16_t fcs;                       // контрольная сумма
     bool escape_next_byte;              // флаг байтстаффинга 
-}hdlc_tx_manager_typedef;
+} hdlc_tx_message_typedef;
 
-typedef struct                          // структура с вспомогательными полями для приёма данных 
+typedef struct                          // структура для приёма кадра 
 {
     bool fd_received;                   // флаг принятого флага fd
     uint8_t buffer[32];                 // буффер для приёма данных (сюда складывается всё подряд из fifo)
@@ -69,19 +69,20 @@ typedef struct                          // структура с вспомог�
     hdlc_packet_typedef rx_data;        // полезная часть данных (кроме флагов FD и FCS) (к ним будет применена обработка)
     uint16_t fcs;                       // контрольная сумма
     bool escape_next_byte;              // флаг байтстаффинга
-}hdlc_rx_manager_typedef;
+} hdlc_rx_message_typedef;
 
 
 fifo_typedef fifo_mts;      // fifo master to slave
 fifo_typedef fifo_stm;      // fifo slave to master
 
-hdlc_tx_manager_typedef master_tx;      // инициализация структуры для отправки ведущим
-hdlc_rx_manager_typedef slave_rx;       // инициализация структуры для приема ведомым
-hdlc_tx_manager_typedef slave_tx;       // инициализация структуры для отправки ведомым (отправка ответ)
-hdlc_rx_manager_typedef master_rx;      // инициализация структуры для приёма ведущим (получение ответа)
+hdlc_tx_message_typedef master_tx;      // инициализация структуры для отправки ведущим
+hdlc_rx_message_typedef slave_rx;       // инициализация структуры для приема ведомым
+hdlc_tx_message_typedef slave_tx;       // инициализация структуры для отправки ведомым (отправка ответ)
+hdlc_rx_message_typedef master_rx;      // инициализация структуры для приёма ведущим (получение ответа)
 
 fsm_state_master_typedef master_state = MASTER_TX;          // инициализация мастера в отправку
 fsm_state_slave_typedef slave_state = SLAVE_WAITING_CMD;    // инициализация слейва в ожидание флага
+
 
 void FifoInit(fifo_typedef* fifo)   // функция инициализации fifo
 {
@@ -121,10 +122,42 @@ bool FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)     // функция ч
 }
 
 
+void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_low, uint8_t *fcs_high)
+{
+    uint16_t crc = 0xFFFF;
+    uint8_t i;
+    int count = length;
+
+    while (count-- > 0)
+    {
+        crc = crc ^ (((uint16_t)(*data)) << 8);
+        data++;
+        
+        for (i = 0; i < 8; i++)
+        {
+            if (crc & 0x8000)
+            {
+                crc = (crc << 1) ^ 0x1021;
+            }
+            else
+            {
+                crc = crc << 1;
+            }
+        }
+    }
+
+    crc = crc ^ 0xFFFF;
+    *fcs_low = crc & 0xFF;
+    *fcs_high = (crc >> 8) & 0xFF;
+}
+
 
 int main()
 {
-
-
+    uint8_t data[2]={0x01, 0x02};
+    uint8_t a;
+    uint8_t b;
+    HDLC_CalculateFCS(data, 2, &a, &b);
+    printf("FCS: 0x%02X%02X\n", b, a);
     return 0; 
 }
