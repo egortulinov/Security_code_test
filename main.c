@@ -13,6 +13,7 @@
 #define HDLC_MASTER_ADDR        0x01                // адресс ведущего HDLC
 #define HDLC_SLAVE_ADDR         0x02                // адрес ведомого HDLC
 
+void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs_lsb);
 
 typedef struct                          // структура fifo
 {
@@ -24,6 +25,7 @@ typedef struct                          // структура fifo
 
 typedef enum
 {
+    MASTER_PREPARE_STATE,
     MASTER_TX_STATE,
     MASTER_WAITING_REPLY_STATE,
     MASTER_RX_STATE,
@@ -65,7 +67,7 @@ typedef struct                          // структура для проме�
 typedef struct                          // структура для промежуточных данных приёма кадра 
 {
     bool fd_received;                   // флаг принятого флага fd
-    uint8_t buffer[32];                 // буффер для приёма данных (сюда складывается всё подряд из fifo)
+    uint8_t buffer[64];                 // буффер для приёма данных (сюда складывается всё подряд из fifo)
     uint8_t buf_index;                  // индекс для записи в буффер приёмника
     hdlc_packet_typedef rx_data;        // полезная часть данных (кроме флагов FD и FCS) (к ним будет применена обработка)
     uint8_t fcs_msb;                    // контрольная сумма старший байт
@@ -82,7 +84,7 @@ hdlc_rx_context_typedef slave_rx_context    = {0};      // инициализа�
 hdlc_tx_context_typedef slave_tx_context    = {0};      // инициализация структуры для отправки ведомым (отправка ответ)
 hdlc_rx_context_typedef master_rx_context   = {0};     // инициализация структуры для приёма ведущим (получение ответа)
 
-fsm_state_master_typedef master_state = MASTER_TX_STATE;          // инициализация мастера в отправку
+fsm_state_master_typedef master_state = MASTER_PREPARE_STATE;     // инициализация мастера в отправку
 fsm_state_slave_typedef slave_state = SLAVE_WAITING_CMD_STATE;    // инициализация слейва в ожидание флага
 
 uint8_t information[16]={0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
@@ -116,6 +118,34 @@ void FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)     // функция ч
     *rx_data=fifo->buffer[fifo->read_index];                    // далее аналогия с FifoWriteByte()
     fifo->read_index=(fifo->read_index+1)%FIFO_SIZE;
     fifo->byte_counter--;                                       // после прочтения "освобождаем" байт
+}
+
+
+void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination_addr, uint8_t cmd, const uint8_t* internal_info_buffer)
+{
+    uint8_t fcs_data[HDLC_INFO_SIZE+2];                 // данные для который считается fcs
+
+    // Настройка контекста
+    tx_context->tx_stage=0;
+    tx_context->info_index=0;
+    tx_context->escape_next_byte=false;
+    tx_context->tx_data.address=destination_addr;
+    tx_context->tx_data.control=cmd;
+    memcpy(tx_context->tx_data.information, internal_info_buffer, HDLC_INFO_SIZE);
+
+    // вычисление FCS
+    fcs_data[0]=tx_context->tx_data.address;
+    fcs_data[1]=tx_context->tx_data.control;
+    memcpy(&fcs_data[2], tx_context->tx_data.information, HDLC_INFO_SIZE);
+    HDLC_CalculateFCS(fcs_data, HDLC_INFO_SIZE+2, &tx_context->fcs_msb, &tx_context->fcs_lsb);
+}
+
+void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)
+{
+    rx_context->fd_received=false;
+    rx_context->buf_index=0;
+    rx_context->escape_next_byte=false;
+    memset(rx_context->buffer, 0, sizeof(rx_context->buffer));
 }
 
 void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
@@ -215,30 +245,51 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
 void FSM_MASTER(void)
 {
     static bool frame_sent=false;
+    static uint8_t command= CMD_INVERSING_BYTES;
     switch(master_state)
     {
+        case MASTER_PREPARE_STATE:
+            printf("Master: Preparing message with command: 0x%02X\n", command);
+            HDLC_TxContextInit(&master_tx_context, HDLC_SLAVE_ADDR, command, information);
+            frame_sent=false;
+            master_state=MASTER_TX_STATE;
+            break;
+
         case MASTER_TX_STATE:
             if(!frame_sent)
             {
                 if(!FifoIsFull(&fifo_mts))
                 {
-                    
+                    HDLC_SendByte(&master_tx_context, &fifo_mts);
+
+                    if(master_tx_context.tx_stage==7)
+                    {
+                        frame_sent=true;
+                        printf("Master: Command frame sent\n");
+                    }
                 }
             }
-            else    master_state = MASTER_WAITING_REPLY_STATE;
-        break;
+            else
+            {
+                master_state=MASTER_WAITING_REPLY_STATE;
+                printf("Master: Waiting for reply\n");
+            }
+            break;
 
         case MASTER_WAITING_REPLY_STATE:
-        break;
+            master_state=MASTER_RX_STATE;
+            break;
 
         case MASTER_RX_STATE:
-        break;
+            master_state=MASTER_PROCESSING_STATE;
+            break;
 
         case MASTER_PROCESSING_STATE:
-        break;
+            master_state=MASTER_PREPARE_STATE;
+            break;
 
         default:
-        break;
+            break;
     }
 }
 
@@ -277,8 +328,14 @@ void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs
 
 int main()
 {
+    int cnt=20;
     FifoInit(&fifo_mts);
     FifoInit(&fifo_stm);
-
+    while(cnt)
+    {
+        FSM_MASTER();
+        cnt--;
+    }
+    
     return 0; 
 }
