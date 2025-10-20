@@ -153,7 +153,7 @@ void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)    // функци�
     rx_context->escape_next_byte=false;
     rx_context->rx_data.address=0;
     rx_context->rx_data.control=0;
-    memcpy(rx_context->rx_data.information, 0, HDLC_INFO_SIZE);
+    memset(rx_context->rx_data.information, 0, HDLC_INFO_SIZE);
 }
 
 // функция отправки одно байта в fifo
