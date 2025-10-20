@@ -67,9 +67,10 @@ typedef struct                          // структура для проме�
 typedef struct                          // структура для промежуточных данных приёма кадра 
 {
     bool fd_received;                   // флаг принятого флага fd
-    uint8_t buffer[64];                 // буффер для приёма данных (сюда складывается всё подряд из fifo)
-    uint8_t buf_index;                  // индекс для записи в буффер приёмника
-    hdlc_packet_typedef rx_data;        // полезная часть данных (кроме флагов FD и FCS) (к ним будет применена обработка)
+    bool frame_assembled;                // флаг собранного сообщения
+    hdlc_packet_typedef rx_data;        // полезная часть данных (без FD и FCS)
+    uint8_t buf_index;                  // индекс для записи в буффер rx_data
+    uint8_t current_byte;               // текущий прочитанный байт
     uint8_t fcs_msb;                    // контрольная сумма старший байт
     uint8_t fcs_lsb;                    // контрольная сумма младший байт
     bool escape_next_byte;              // флаг байтстаффинга
@@ -87,7 +88,11 @@ hdlc_rx_context_typedef master_rx_context   = {0};     // инициализац
 fsm_state_master_typedef master_state = MASTER_PREPARE_STATE;     // инициализация мастера в отправку
 fsm_state_slave_typedef slave_state = SLAVE_WAITING_CMD_STATE;    // инициализация слейва в ожидание флага
 
-uint8_t information[16]={0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+uint8_t internal_master_tx_buffer[HDLC_INFO_SIZE]={0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+uint8_t internal_slave_rx_buffer[HDLC_INFO_SIZE];
+uint8_t internal_slave_tx_buffer[HDLC_INFO_SIZE];
+uint8_t internal_master_rx_buffer[HDLC_INFO_SIZE];
+
 
 void FifoInit(fifo_typedef* fifo)   // функция инициализации fifo
 {
@@ -120,8 +125,8 @@ void FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)     // функция ч
     fifo->byte_counter--;                                       // после прочтения "освобождаем" байт
 }
 
-
-void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination_addr, uint8_t cmd, const uint8_t* internal_info_buffer)
+// функция для настройки контекста отправляемого сообщения
+void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination_addr, uint8_t cmd, const uint8_t* internal_info_buffer) 
 {
     uint8_t fcs_data[HDLC_INFO_SIZE+2];                 // данные для который считается fcs
 
@@ -140,14 +145,18 @@ void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination
     HDLC_CalculateFCS(fcs_data, HDLC_INFO_SIZE+2, &tx_context->fcs_msb, &tx_context->fcs_lsb);
 }
 
-void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)
+void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)    // функция настройки контекста для принимаемого сообщения
 {
     rx_context->fd_received=false;
+    rx_context->frame_assembled=false;
     rx_context->buf_index=0;
     rx_context->escape_next_byte=false;
-    memset(rx_context->buffer, 0, sizeof(rx_context->buffer));
+    rx_context->rx_data.address=0;
+    rx_context->rx_data.control=0;
+    memcpy(rx_context->rx_data.information, 0, HDLC_INFO_SIZE);
 }
 
+// функция отправки одно байта в fifo
 void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
 {
     static bool escape_second_byte_sent=false;                  // флаг отправленной второй части эскейп последовательности
@@ -242,6 +251,57 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
     }
 }
 
+// функция приёма одно байта из fifo
+void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo)
+{
+    if(FifoIsEmpty(fifo))                               return;
+    if(rx_context->frame_assembled)                     return;
+    if(rx_context->buf_index >= HDLC_INFO_SIZE + 2)     return;
+
+    FifoReadByte(fifo, &rx_context->current_byte);
+
+    if(rx_context->escape_next_byte)
+    {
+        rx_context->current_byte ^= 0x20;
+        rx_context->escape_next_byte=false;
+
+        if(rx_context->fd_received)         
+            rx_context->rx_data.information[rx_context->buf_index++]=rx_context->current_byte;
+    }
+    else if (rx_context->current_byte==HDLC_ESCAPE)         // если эскейп последовательность
+    {
+        rx_context->escape_next_byte=true;
+        return;
+    }
+    else if (rx_context->current_byte==HDLC_FD_FLAG)        // если флаг FD
+    {
+        if(rx_context->fd_received)
+        {
+            // конец кадра
+            rx_context->frame_assembled=true;
+        }
+        else
+        {
+            // начало кадра
+            rx_context->fd_received=true;
+            rx_context->buf_index=0;
+        }
+        rx_context->escape_next_byte=false;
+        return;
+    }
+    else
+    {
+        if(rx_context->fd_received)
+        {
+            if(rx_context->buf_index==0)            rx_context->rx_data.address=rx_context->current_byte;
+            else if(rx_context->buf_index==1)       rx_context->rx_data.control=rx_context->current_byte;
+            else                                    rx_context->rx_data.information[rx_context->buf_index-2]=rx_context->current_byte;
+
+            rx_context->buf_index++;
+        }
+    }
+}
+
 void FSM_MASTER(void)
 {
     static bool frame_sent=false;
@@ -250,7 +310,7 @@ void FSM_MASTER(void)
     {
         case MASTER_PREPARE_STATE:
             printf("Master: Preparing message with command: 0x%02X\n", command);
-            HDLC_TxContextInit(&master_tx_context, HDLC_SLAVE_ADDR, command, information);
+            HDLC_TxContextInit(&master_tx_context, HDLC_SLAVE_ADDR, command, internal_master_tx_buffer);
             frame_sent=false;
             master_state=MASTER_TX_STATE;
             break;
