@@ -94,6 +94,32 @@ uint8_t internal_slave_rx_buffer[HDLC_INFO_SIZE+1];
 uint8_t internal_slave_tx_buffer[HDLC_INFO_SIZE];
 uint8_t internal_master_rx_buffer[HDLC_INFO_SIZE+1];
 
+void ProcessCommand(uint8_t command, const uint8_t* input_data, uint8_t* output_data)
+{
+    switch (command)
+    {
+        case CMD_INVERSING_BYTES:
+            printf("Slave: Inversing bytes\n");
+            for(int i=0; i<HDLC_INFO_SIZE; i++)
+            {
+                output_data[i]=~input_data[i];
+            }
+            break;
+        
+        case CMD_MIRRORING_BYTES:
+            printf("Slave: Mirroring bytes\n");
+            for(int i=0; i<HDLC_INFO_SIZE; i++)
+            {
+                output_data[i]=input_data[HDLC_INFO_SIZE-1-i];
+            }
+            break;
+
+        default:
+            printf("Slave: Unknown command 0x%02X\n", command);
+            memcpy(output_data, input_data, HDLC_INFO_SIZE);
+            break;
+    }
+}
 
 void FifoInit(fifo_typedef* fifo)   // функция инициализации fifo
 {
@@ -154,8 +180,11 @@ void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)
     rx_context->frame_verified=false;                
     rx_context->buf_index=0;
     rx_context->escape_next_byte=false;
+    rx_context->current_byte=0;
     rx_context->rx_data.address=0;
     rx_context->rx_data.control=0;
+    rx_context->fcs_lsb=0;
+    rx_context->fcs_msb=0;
     memset(rx_context->rx_data.information, 0, HDLC_INFO_SIZE);
 }
 
@@ -356,14 +385,19 @@ void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr
 
 void FSM_MASTER(void)
 {
-    static bool frame_sent=false;
-    static uint8_t command= CMD_INVERSING_BYTES;
+    static bool frame_sent=false;                   // флаг отправленного сообщения
+    static uint8_t command= CMD_INVERSING_BYTES;    // выбор команды
+    static uint32_t timeout=0;                      // таймаут в случае отстутствия ответа
     switch(master_state)
     {
         case MASTER_PREPARE_STATE:
             printf("Master: Preparing message with command: 0x%02X\n", command);
+
             HDLC_TxContextInit(&master_tx_context, HDLC_SLAVE_ADDR, command, internal_master_tx_buffer);
+            HDLC_RxContextInit(&master_rx_context);
+
             frame_sent=false;
+
             master_state=MASTER_TX_STATE;
             break;
 
@@ -377,30 +411,68 @@ void FSM_MASTER(void)
                     if(master_tx_context.tx_stage==7)
                     {
                         frame_sent=true;
-                        printf("Master: Frame sent\n");
+                        printf("Master: Frame sent completely\n");
                     }
                 }
             }
             else
             {
                 master_state=MASTER_WAITING_REPLY_STATE;
-                printf("Master: Waiting for reply\n");
+                printf("Master: Waiting for reply...\n");
+                timeout=0;
             }
             break;
 
         case MASTER_WAITING_REPLY_STATE:
-            master_state=MASTER_RX_STATE;
+
+            HDLC_ReceiveByte(&master_rx_context, &fifo_mts);
+
+            if(master_rx_context.fd_received && !master_rx_context.frame_assembled)
+            {
+                printf("Master: Reply start flag received\n");
+                master_state=MASTER_RX_STATE;
+            }
+
+            timeout++;
+            if(timeout>1000000)
+            {
+                printf("Master: No response received, sending again");
+                HDLC_RxContextInit(&master_rx_context);
+                master_state=MASTER_PREPARE_STATE;
+            }
             break;
 
         case MASTER_RX_STATE:
-            master_state=MASTER_PROCESSING_STATE;
+            HDLC_ReceiveByte(&master_rx_context, &fifo_stm);
+
+            if(master_rx_context.frame_assembled)
+            {
+                HDLC_VerifyFrame(&master_rx_context, HDLC_MASTER_ADDR, internal_master_rx_buffer, "Master");
+
+                if(master_rx_context.frame_verified)
+                    master_state=MASTER_PROCESSING_STATE;
+                else
+                {
+                    printf("Master: Reply verification failed, sending again\n");
+                    HDLC_RxContextInit(&master_rx_context);
+                    master_state=MASTER_PREPARE_STATE;
+                }
+            }
             break;
 
         case MASTER_PROCESSING_STATE:
+            printf("Master: Proccesing reply\n");
+            printf("Master: Received data: ");
+            for(int i=1; i<HDLC_INFO_SIZE+1; i++)
+            {
+                printf("%02X ", internal_master_rx_buffer[i]);
+            }
+            printf("\n");
             master_state=MASTER_PREPARE_STATE;
             break;
 
         default:
+            master_state=MASTER_PREPARE_STATE;
             break;
     }
 }
@@ -440,9 +512,11 @@ void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs
 
 int main()
 {
-    int cnt=20;
+    int cnt=25;
     FifoInit(&fifo_mts);
     FifoInit(&fifo_stm);
+    printf("Master-Slave simulation starting...\n");
+    printf("-------------------------------------\n");
     while(cnt)
     {
         FSM_MASTER();
