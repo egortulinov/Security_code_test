@@ -6,18 +6,18 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define FIFO_SIZE       8           // размер fifo
+#define FIFO_SIZE       8           // размер FIFO
 
 
-typedef struct                          // структура fifo
+typedef struct                          // структура FIFO
 {
-    uint8_t buffer[FIFO_SIZE];          // буффер fifo
+    uint8_t buffer[FIFO_SIZE];          // буффер FIFO
     uint8_t byte_counter;               // счетчик байт в буфере
-    uint8_t write_index;                // индекс для записи в fifo
-    uint8_t read_index;                 // индекс для чтения из fifo
+    uint8_t write_index;                // индекс для записи в FIFO
+    uint8_t read_index;                 // индекс для чтения из FIFO
 } fifo_typedef;
 
-// функция инициализации fifo
+// функция инициализации FIFO
 static inline void FifoInit(fifo_typedef* fifo)   
 {
     fifo->byte_counter=0;
@@ -26,19 +26,19 @@ static inline void FifoInit(fifo_typedef* fifo)
     memset(fifo->buffer, 0, FIFO_SIZE);
 }
 
-// функция проверки fifo на полноту
+// функция проверки FIFO на полноту
 static inline bool FifoIsFull(fifo_typedef* fifo)      
 {
     return (fifo->byte_counter==FIFO_SIZE);  // если полон, то возвращается 1
 }
 
-// проверка fifo на отсутствие данных
+// проверка FIFO на отсутствие данных
 static inline bool FifoIsEmpty(fifo_typedef* fifo)      
 {
     return (fifo->byte_counter==0);          // если пуст, то возвращается 1
 }
 
-// функция записи байта в fifo
+// функция записи байта в FIFO
 static inline void FifoWriteByte(fifo_typedef* fifo, uint8_t data)    
 {
     fifo->buffer[fifo->write_index]=data;               
@@ -46,7 +46,7 @@ static inline void FifoWriteByte(fifo_typedef* fifo, uint8_t data)
     fifo->byte_counter++;                               
 }
 
-// функция чтения байта из fifo в буффер приёмника
+// функция чтения байта из FIFO в буффер приёмника
 static inline void FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)     
 {
     *rx_data=fifo->buffer[fifo->read_index];                    
@@ -54,24 +54,22 @@ static inline void FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)
     fifo->byte_counter--;                                       
 }
 
+// отладочная функция
 static inline void DebugFifoState(fifo_typedef* fifo, const char* fifo_name)
 {
     printf("%s FIFO: [", fifo_name);
     for(int i = 0; i < FIFO_SIZE; i++) {
         if(i == fifo->read_index && i == fifo->write_index) {
-            printf(" RW:%02X", fifo->buffer[i]);  // Чтение и запись на одной позиции
+            printf(" RW:%02X", fifo->buffer[i]);  
         } else if(i == fifo->read_index) {
-            printf(" R:%02X", fifo->buffer[i]);   // Позиция чтения
+            printf(" R:%02X", fifo->buffer[i]);   
         } else if(i == fifo->write_index) {
-            printf(" W:%02X", fifo->buffer[i]);   // Позиция записи
+            printf(" W:%02X", fifo->buffer[i]);   
         } else {
-            printf(" %02X", fifo->buffer[i]);     // Обычный байт
+            printf(" %02X", fifo->buffer[i]);
         }
     }
     printf(" ]\n");
 }
-
-extern fifo_typedef fifo_mts;
-extern fifo_typedef fifo_stm;
 
 #endif

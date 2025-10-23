@@ -4,21 +4,21 @@
 #include "fsm.h"
 
 
-fifo_typedef fifo_mts = {0};      // fifo Master To Slave
-fifo_typedef fifo_stm = {0};      // fifo Slave To Master
+fifo_typedef fifo_mts = {0};      // FIFO Master To Slave
+fifo_typedef fifo_stm = {0};      // FIFO Slave To Master
 
 
 int main()
 {
-    FifoInit(&fifo_mts);
-    FifoInit(&fifo_stm);
+    FifoInit(&fifo_mts);        // инициализация FIFO master to slave
+    FifoInit(&fifo_stm);        // инициализация FIFO slave to master
 
     printf("Master<-->Slave simulation starting...\n");
 
     while(1)
     {
-        FSM_Master();
-        FSM_Slave();
+        FSM_Master();   // конечный автомат ведущего
+        FSM_Slave();    // конечный автомат ведомого
 
         #ifdef MORE_FIFO_INFO
         DebugFifoState(&fifo_mts, "MTS");

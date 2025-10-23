@@ -14,7 +14,7 @@ hdlc_rx_context_typedef master_rx_context   = {0};      // инициализа�
 // функция для настройки контекста отправляемого сообщения
 void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination_addr, uint8_t cmd, const uint8_t* internal_info_buffer) 
 {
-    uint8_t fcs_data[HDLC_INFO_SIZE+2];                 // данные для который считается fcs
+    uint8_t fcs_data[HDLC_INFO_SIZE+2];                 // данные для который считается FCS
 
     // Настройка контекста
     tx_context->tx_stage=0;
@@ -47,7 +47,7 @@ void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)
     memset(rx_context->rx_data.information, 0, HDLC_INFO_SIZE);
 }
 
-// расчет fcs для HDLC (доработанный) с https://github.com/jmswu/crc16
+// расчет FCS для HDLC (доработанный) с https://github.com/jmswu/crc16
 void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs_lsb)  
 {
     uint16_t crc = 0xFFFF;                                                              // начальное значение HDLC
@@ -72,17 +72,17 @@ void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs
         }
     }
 
-    crc = crc ^ 0xFFFF;                                                                 // Финальное инвертирование для HDLC
+    crc = crc ^ 0xFFFF;                                                                 // финальное инвертирование для HDLC
 
-    // Возвращаем байты в правильном порядке для HDLC
+    // возвращаем байты в правильном порядке для HDLC
     *fcs_msb = crc & 0xFF;
     *fcs_lsb = (crc >> 8) & 0xFF;
 }
 
-// функция отправки одно байта в fifo
+// функция отправки одно байта в FIFO
 void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
 {
-    // обработка эскейп последовательности
+    // обработка ESCAPE последовательности
     if (tx_context->escape_next_byte) 
     {
         if(FifoIsFull(fifo))    return;
@@ -129,11 +129,11 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
             }
             break;
 
-        case 4:     // старший байт fcs
+        case 4:     // старший байт FCS
             tx_context->current_byte = tx_context->fcs_msb;
             break;
 
-        case 5:     // младший байт fcs 
+        case 5:     // младший байт FCS 
             tx_context->current_byte = tx_context->fcs_lsb;
             break;
 
@@ -187,8 +187,8 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
     #endif
 }
 
-// функция приёма одно байта из fifo
-void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, char* sender_name)
+// функция приёма одно байта из FIFO
+void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, const char* sender_name)
 {
     // проверки корректности
     if(FifoIsEmpty(fifo))                               return;
@@ -197,7 +197,7 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, c
 
     FifoReadByte(fifo, &rx_context->current_byte);
 
-    // обработка эскейп последовательности
+    // обработка ESCAPE последовательности
     if(rx_context->escape_next_byte) 
     {
         rx_context->current_byte ^= 0x20;
@@ -268,7 +268,7 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, c
 }
 
 // функция проверки корректности кадра
-void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, uint8_t* internal_buffer, char* sender_name)
+void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, uint8_t* internal_buffer, const char* sender_name)
 {
     printf("%s:\tVerifying frame...\n", sender_name);
 
@@ -292,7 +292,7 @@ void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr
         return;
     }
 
-    // Сравнение полученной fcs с расчитанной
+    // Сравнение полученной FCS с расчитанной
     uint16_t received_fcs=(rx_context->fcs_msb<<8)|(rx_context->fcs_lsb);
     uint8_t fcs_data[HDLC_INFO_SIZE+2];
     uint8_t calculated_fcs_msb, calculated_fcs_lsb;

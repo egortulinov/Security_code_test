@@ -15,7 +15,7 @@ void FSM_Master(void)
     {
         case MASTER_PREPARE_STATE:
 
-            // Подготовка к началу общения
+            // подготовка к началу общения
             printf("----------------------------------------------------------\n");
             printf("Master:\tPreparing message with command: 0x%02X to unit: 0x%02X \n", USER_COMMAND, HDLC_SLAVE_ADDR);
 
@@ -29,7 +29,7 @@ void FSM_Master(void)
 
         case MASTER_TX_STATE:
 
-            // Отправка всего сообщения
+            // отправка всего сообщения
             if(!frame_sent)
             {
                 if(!FifoIsFull(&fifo_mts))
@@ -48,7 +48,7 @@ void FSM_Master(void)
             }
             else
             {
-                // Отладочная информация
+                // отладочная информация
                 printf("Master:\tTransmitted information:\t");
                 for(int i=0; i<HDLC_INFO_SIZE; i++)
                 {
@@ -64,7 +64,7 @@ void FSM_Master(void)
 
         case MASTER_WAITING_REPLY_STATE:
 
-            // Ожидаем флаг начала передачи от ведомого
+            // ожидаем флаг начала передачи от ведомого
             if (!FifoIsEmpty(&fifo_stm))
                 HDLC_ReceiveByte(&master_rx_context, &fifo_stm, "Master");
             else
@@ -76,7 +76,7 @@ void FSM_Master(void)
                 master_state=MASTER_RX_STATE;
             }
 
-            // Проверка на преувеличение времени ответа
+            // проверка на преувеличение времени ответа
             timeout++;
             if(timeout>1000000)
             {
@@ -88,7 +88,7 @@ void FSM_Master(void)
 
         case MASTER_RX_STATE:
             
-            // Приём ответа от ведомого 
+            // приём ответа от ведомого 
             if (!FifoIsEmpty(&fifo_stm)) 
                 HDLC_ReceiveByte(&master_rx_context, &fifo_stm, "Master");
             else
@@ -101,7 +101,7 @@ void FSM_Master(void)
 
         case MASTER_PROCESSING_STATE:
 
-            // Проверка и обработка принятого ответа
+            // проверка и обработка принятого ответа
             if(!master_rx_context.frame_verified)
             {
                 HDLC_VerifyFrame(&master_rx_context, HDLC_MASTER_ADDR, internal_master_rx_buffer, "Master");
@@ -119,7 +119,7 @@ void FSM_Master(void)
                 }
             }
 
-            // Отладочный вывод
+            // отладочный вывод
             printf("Master:\tReceived infromation:\t\t");
             for(int i=1; i<HDLC_INFO_SIZE+1; i++)
             {
@@ -146,7 +146,7 @@ void FSM_Slave(void)
     {
         case SLAVE_WAITING_CMD_STATE:
 
-            // Ожидаем флаг начала передачи от ведущего
+            // ожидаем флаг начала передачи от ведущего
             if (!FifoIsEmpty(&fifo_mts))
                 HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, "Slave");
             else
@@ -161,7 +161,7 @@ void FSM_Slave(void)
 
         case SLAVE_RX_STATE:
 
-            // Приём сообщения от ведущего
+            // приём сообщения от ведущего
             if (!FifoIsEmpty(&fifo_mts))
                 HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, "Slave");
             else
@@ -176,7 +176,7 @@ void FSM_Slave(void)
 
         case SLAVE_PROCESSING_STATE:
 
-            // Проверка и обработка принятого сообщения
+            // проверка и обработка принятого сообщения
             if(!slave_rx_context.frame_verified)
             {
                 HDLC_VerifyFrame(&slave_rx_context, HDLC_SLAVE_ADDR, internal_slave_rx_buffer, "Slave");
@@ -195,7 +195,7 @@ void FSM_Slave(void)
                 }
             }
 
-                // Отладочная информация
+                // отладочная информация
                 printf("Slave:\tReceived information:\t\t");
                 for(int i=1; i<HDLC_INFO_SIZE+1; i++)
                 {
@@ -212,7 +212,7 @@ void FSM_Slave(void)
 
         case SLAVE_TX_STATE:
 
-            // Отправка ответа ведущему
+            // отправка ответа ведущему
             if(processing_complete && !reply_sent)
             {
                 HDLC_TxContextInit(&slave_tx_context, HDLC_MASTER_ADDR, internal_slave_rx_buffer[0], internal_slave_tx_buffer);
@@ -234,7 +234,7 @@ void FSM_Slave(void)
 
                     slave_state=SLAVE_WAITING_CMD_STATE;
 
-                    // Отладочная информация
+                    // отладочная информация
                     printf("Slave:\tTransmitted information:\t");
                     for(int i=0; i<HDLC_INFO_SIZE; i++)
                     {

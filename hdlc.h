@@ -7,7 +7,7 @@
 #define HDLC_MASTER_ADDR        0x01                    // адресс ведущего HDLC
 #define HDLC_SLAVE_ADDR         0x02                    // адрес ведомого HDLC
 #define HDLC_FD_FLAG            0x7E                    // флаг протокола HDLC
-#define HDLC_ESCAPE             0x7D                    // эскейп последовательность байтстаффинга HDLC
+#define HDLC_ESCAPE             0x7D                    // ESCAPE последовательность байтстаффинга HDLC
 
 
 typedef enum                            // перечисление команд HDLC
@@ -23,9 +23,21 @@ typedef struct                              // структура полезны
     uint8_t information[HDLC_INFO_SIZE];    // информационное поле HDLC
 } hdlc_packet_typedef;
 
+typedef enum                        // перечисление стадий отправки сообщения
+{
+    TX_STAGE_FD_START=0,            // флаг FD - начало кадра
+    TX_STAGE_ADDRESS,               // адресс
+    TX_STAGE_CONTROL,               // управляющее поле
+    TX_STAGE_INFORMATION,           // информационное поле
+    TX_STAGE_FCS_MSB,               // FCS старший байт
+    TX_STAGE_FCS_LSB,               // FCS младший байт
+    TX_STAGE_FD_END,                // флаг FD - конец кадра
+    TX_STAGE_COMPLETED              // все стадии пройдены
+} hdlc_tx_stage_typedef;
+
 typedef struct                          // структура для промежуточных данных передачи кадра
 {
-    uint8_t tx_stage;                   // текущая стадия передачи данных (0 - передача флааг FD, 1 - адрес, 2 - управление, 3 - информация, 4,5 - fcs, 6 - FD)
+    hdlc_tx_stage_typedef tx_stage;     // текущая стадия передачи данных
     uint8_t current_byte;               // номер байта, который мы отправляем
     hdlc_packet_typedef tx_data;        // сами данные (кроме флагов FD и FCS)
     uint8_t info_index;                 // индекс для передачи данных информационного поля
@@ -36,7 +48,7 @@ typedef struct                          // структура для проме�
 
 typedef struct                          // структура для промежуточных данных приёма кадра
 {
-    bool fd_received;                   // флаг принятого флага fd
+    bool fd_received;                   // флаг принятого флага FD
     bool frame_assembled;               // флаг собранного сообщения
     bool frame_verified;                // флаг пройденной проверки
     hdlc_packet_typedef rx_data;        // полезная часть данных (без FD и FCS)
@@ -52,10 +64,10 @@ extern uint8_t internal_slave_rx_buffer[];              // внутренняя 
 extern uint8_t internal_slave_tx_buffer[];              // внутренняя память ведомого на отправку (содержит информационное поле)
 extern uint8_t internal_master_rx_buffer[];             // внутренняя память ведущего на приём (содержит команду и информационное поле)
 
-extern hdlc_tx_context_typedef master_tx_context;      // инициализация структуры для отправки ведущим
-extern hdlc_rx_context_typedef slave_rx_context;      // инициализация структуры для приема ведомым
-extern hdlc_tx_context_typedef slave_tx_context;      // инициализация структуры для отправки ведомым (отправка ответ)
-extern hdlc_rx_context_typedef master_rx_context;      // инициализация структуры для приёма ведущим (получение ответа)
+extern hdlc_tx_context_typedef master_tx_context;      // структура для отправки ведущим
+extern hdlc_rx_context_typedef slave_rx_context;       // структура для приема ведомым
+extern hdlc_tx_context_typedef slave_tx_context;       // структура для отправки ведомым (отправка ответ)
+extern hdlc_rx_context_typedef master_rx_context;      // структура для приёма ведущим (получение ответа)
 
 // функция для настройки контекста отправляемого сообщения
 void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination_addr, uint8_t cmd, const uint8_t* internal_info_buffer);
@@ -66,14 +78,14 @@ void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context);
 // расчет fcs для HDLC (доработанный) с https://github.com/jmswu/crc16
 void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs_lsb);  
 
-// функция отправки одно байта в fifo
+// функция отправки одно байта в FIFO
 void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo);
 
-// функция приёма одно байта из fifo
-void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, char* sender_name);
+// функция приёма одно байта из FIFO
+void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, const char* sender_name);
 
 // функция проверки корректности кадра
-void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, uint8_t* internal_buffer, char* sender_name);
+void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, uint8_t* internal_buffer, const char* sender_name);
 
 // функция выполнения принятой команды
 void ProcessCommand(uint8_t command, const uint8_t* input_data, uint8_t* output_data);
