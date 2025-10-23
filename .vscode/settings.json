@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "user.h": "c",
-        "hdlc.h": "c"
+        "hdlc.h": "c",
+        "fsm.h": "c"
     }
 }

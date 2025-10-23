@@ -35,7 +35,7 @@ void FSM_Master(void)
                 if(!FifoIsFull(&fifo_mts))
                 {
                     HDLC_SendByte(&master_tx_context, &fifo_mts);
-                    if(master_tx_context.tx_stage==7)
+                    if(master_tx_context.tx_stage==TX_STAGE_COMPLETED)
                     {
                         frame_sent=true;
                         printf("Master:\tFrame sent completely!\n");
@@ -224,7 +224,7 @@ void FSM_Slave(void)
             {
                 HDLC_SendByte(&slave_tx_context, &fifo_stm);
 
-                if(slave_tx_context.tx_stage==7)
+                if(slave_tx_context.tx_stage==TX_STAGE_COMPLETED)
                 {
                     printf("Slave:\tReply sent completely!\n");
 

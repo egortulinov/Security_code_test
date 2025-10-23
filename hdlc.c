@@ -17,7 +17,7 @@ void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination
     uint8_t fcs_data[HDLC_INFO_SIZE+2];                 // данные для который считается FCS
 
     // Настройка контекста
-    tx_context->tx_stage=0;
+    tx_context->tx_stage=TX_STAGE_FD_START;
     tx_context->info_index=0;
     tx_context->escape_next_byte=false;
     tx_context->tx_data.address=destination_addr;
@@ -90,13 +90,13 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
         tx_context->escape_next_byte = false;
     
         // переход к следующему полю
-        if(tx_context->tx_stage != 3) 
+        if(tx_context->tx_stage != TX_STAGE_INFORMATION) 
         {
             tx_context->tx_stage++;
         } 
         else if (tx_context->info_index >= HDLC_INFO_SIZE) 
         {
-            tx_context->tx_stage=4;
+            tx_context->tx_stage=TX_STAGE_FCS_MSB;
         }
         return;
     }
@@ -104,19 +104,19 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
     // определяем текущий байт
     switch(tx_context->tx_stage) 
     {
-        case 0:     // флаг FD
+        case TX_STAGE_FD_START:     // флаг FD
             tx_context->current_byte = HDLC_FD_FLAG;
             break;
 
-        case 1:     // адрес
+        case TX_STAGE_ADDRESS:     // адрес
             tx_context->current_byte = tx_context->tx_data.address;
             break;
 
-        case 2:     // управляющее поле
+        case TX_STAGE_CONTROL:     // управляющее поле
             tx_context->current_byte = tx_context->tx_data.control;
             break;
 
-        case 3:     // информационное поле
+        case TX_STAGE_INFORMATION:     // информационное поле
             if(tx_context->info_index < HDLC_INFO_SIZE) 
             {
                 tx_context->current_byte = tx_context->tx_data.information[tx_context->info_index];
@@ -124,20 +124,20 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
             } 
             else 
             {
-                tx_context->tx_stage=4;
+                tx_context->tx_stage=TX_STAGE_FCS_MSB;
                 return;
             }
             break;
 
-        case 4:     // старший байт FCS
+        case TX_STAGE_FCS_MSB:     // старший байт FCS
             tx_context->current_byte = tx_context->fcs_msb;
             break;
 
-        case 5:     // младший байт FCS 
+        case TX_STAGE_FCS_LSB:     // младший байт FCS 
             tx_context->current_byte = tx_context->fcs_lsb;
             break;
 
-        case 6:     // флаг FD окончания пакета
+        case TX_STAGE_FD_END:     // флаг FD окончания пакета
             tx_context->current_byte = HDLC_FD_FLAG;
             break;
 
@@ -148,7 +148,7 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
     // проверка на необходимость байтстаффинга
     if((tx_context->current_byte == HDLC_FD_FLAG) || (tx_context->current_byte == HDLC_ESCAPE)) 
     {
-        if(tx_context->tx_stage == 0 || tx_context->tx_stage == 6)      // флаги начала и конца кадра не байтстаффятся
+        if(tx_context->tx_stage == TX_STAGE_FD_START || tx_context->tx_stage == TX_STAGE_FD_END)      // флаги начала и конца кадра не байтстаффятся
         {
             if(FifoIsFull(fifo)) return;
             FifoWriteByte(fifo, tx_context->current_byte);             
@@ -170,11 +170,11 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
         FifoWriteByte(fifo, tx_context->current_byte);
         
         // Переход к следующему stage
-        if(tx_context->tx_stage == 3) 
+        if(tx_context->tx_stage == TX_STAGE_INFORMATION) 
         {
             if(tx_context->info_index >= HDLC_INFO_SIZE) 
             {
-                tx_context->tx_stage = 4;
+                tx_context->tx_stage = TX_STAGE_FCS_MSB;
             }
         } 
         else 
