@@ -8,6 +8,8 @@
                 "-fdiagnostics-color=always",
                 "-g",
                 "${file}",
+                "${fileDirname}\\hdlc.c",
+                "${fileDirname}\\fsm.c",
                 "-o",
                 "${fileDirname}\\${fileBasenameNoExtension}.exe"
             ],
