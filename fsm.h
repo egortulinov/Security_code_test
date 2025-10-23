@@ -3,6 +3,9 @@
 
 #include "hdlc.h"
 #include "fifo.h"
+#include "timer.h"
+
+#define MASTER_WAIT_REPLY_MS        1000        // 1 секунда на ответ ведущему
 
 
 typedef enum                        // перечисление состояний ведущего устройства
@@ -27,6 +30,9 @@ extern fsm_state_slave_typedef slave_state;     // состояние ведом
 
 extern fifo_typedef fifo_mts;                   // FIFO Master To Slave
 extern fifo_typedef fifo_stm;                   // FIFO Slave To Master
+
+extern uint64_t master_timeout_deadline;
+extern uint64_t master_retry_deadline;
 
 // конечный автомат ведущего
 void FSM_Master(void);

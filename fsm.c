@@ -4,13 +4,14 @@
 fsm_state_master_typedef master_state = MASTER_PREPARE_STATE;     // инициализация мастера в отправку
 fsm_state_slave_typedef slave_state = SLAVE_WAITING_CMD_STATE;    // инициализация слейва в ожидание флага
 
+uint64_t master_timeout_deadline = 0;
+uint64_t master_retry_deadline = 0;
 
 // конечный автомат ведущего
 void FSM_Master(void)
 {
     static bool frame_sent=false;                   // флаг отправленного сообщения
-    static uint32_t timeout=0;                      // таймаут в случае отстутствия ответа
-
+    
     switch(master_state)
     {
         case MASTER_PREPARE_STATE:
@@ -38,7 +39,9 @@ void FSM_Master(void)
                     if(master_tx_context.tx_stage==TX_STAGE_COMPLETED)
                     {
                         frame_sent=true;
+                        master_timeout_deadline = SET_TIMEOUT(MASTER_WAIT_REPLY_MS);
                         printf("Master:\tFrame sent completely!\n");
+                        printf("Master:\tWaiting for reply...\n");
                     }
                 }
                 else
@@ -58,7 +61,6 @@ void FSM_Master(void)
 
                 master_state=MASTER_WAITING_REPLY_STATE;
                 printf("Master:\tWaiting for reply from unit 0x%02X...\n", master_tx_context.tx_data.address);
-                timeout=0;
             }
             break;
 
@@ -74,15 +76,15 @@ void FSM_Master(void)
             {
                 printf("Master:\tStart receiving frame...\n");
                 master_state=MASTER_RX_STATE;
+                master_timeout_deadline = 0;
             }
 
-            // проверка на преувеличение времени ответа
-            timeout++;
-            if(timeout>1000000)
+            // проверка на таймаут ответа
+            if (master_timeout_deadline != 0 && CHECK_TIMEOUT(master_timeout_deadline))
             {
-                printf("Master:\tNo response received! Sending again...\n");
+                printf("Master:\tNo reply received. Sending again...\n");
                 HDLC_RxContextInit(&master_rx_context);
-                master_state=MASTER_PREPARE_STATE;
+                master_state = MASTER_PREPARE_STATE;
             }
             break;
 
@@ -222,7 +224,7 @@ void FSM_Slave(void)
 
             if(!FifoIsFull(&fifo_stm))
             {
-                HDLC_SendByte(&slave_tx_context, &fifo_stm);
+                //HDLC_SendByte(&slave_tx_context, &fifo_stm);
 
                 if(slave_tx_context.tx_stage==TX_STAGE_COMPLETED)
                 {

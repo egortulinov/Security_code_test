@@ -2,6 +2,7 @@
 #include "user.h"
 #include "hdlc.h"
 #include "fsm.h"
+#include "timer.h"
 
 
 fifo_typedef fifo_mts = {0};      // FIFO Master To Slave
