@@ -5,6 +5,7 @@
 #define USER_INFO_PACK          {0x7E, 0x01, 0x02, 0x03, 0x04, 0x7D, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F}    // информационное поле
 #define HDLC_INFO_SIZE          16                      // размер информационного поля HDLC
 #define USER_COMMAND            0x02                    // выбор команды 0x01 (INVERSING_BYTES) or 0x02 (CMD_MIRRORING_BYTES)
+#define MASTER_WAIT_REPLY_MS    1000                    // 1000 милисекунд на ответ ведущему
 
 //#define LINUX                                   // необходимо раскомментировать/закомментировать в случае использования/не использования
 #define WINDOWS                                 // необходимо раскомментировать/закомментировать в случае использования/не использования

@@ -39,7 +39,6 @@ void FSM_Master(void)
                     if(master_tx_context.tx_stage==TX_STAGE_COMPLETED)
                     {
                         frame_sent=true;
-                        master_timeout_deadline = SET_TIMEOUT(MASTER_WAIT_REPLY_MS);
                         printf("Master:\tFrame sent completely!\n");
                         printf("Master:\tWaiting for reply...\n");
                     }
@@ -59,8 +58,9 @@ void FSM_Master(void)
                 }
                 printf("\n");
 
-                master_state=MASTER_WAITING_REPLY_STATE;
                 printf("Master:\tWaiting for reply from unit 0x%02X...\n", master_tx_context.tx_data.address);
+                master_timeout_deadline = SET_TIMEOUT(MASTER_WAIT_REPLY_MS);
+                master_state=MASTER_WAITING_REPLY_STATE;
             }
             break;
 
@@ -79,7 +79,7 @@ void FSM_Master(void)
                 master_timeout_deadline = 0;
             }
 
-            // проверка на таймаут ответа
+            // проверка на таймаута
             if (master_timeout_deadline != 0 && CHECK_TIMEOUT(master_timeout_deadline))
             {
                 printf("Master:\tNo reply received. Sending again...\n");
@@ -224,7 +224,7 @@ void FSM_Slave(void)
 
             if(!FifoIsFull(&fifo_stm))
             {
-                //HDLC_SendByte(&slave_tx_context, &fifo_stm);
+                HDLC_SendByte(&slave_tx_context, &fifo_stm);
 
                 if(slave_tx_context.tx_stage==TX_STAGE_COMPLETED)
                 {

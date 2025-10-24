@@ -5,8 +5,6 @@
 #include "fifo.h"
 #include "timer.h"
 
-#define MASTER_WAIT_REPLY_MS        1000        // 1 секунда на ответ ведущему
-
 
 typedef enum                        // перечисление состояний ведущего устройства
 {
