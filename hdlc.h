@@ -50,7 +50,7 @@ typedef struct                          // структура для проме�
 {
     bool fd_received;                   // флаг принятого флага FD
     bool frame_assembled;               // флаг собранного сообщения
-    bool frame_verified;                // флаг пройденной проверки
+    bool frame_correct;                 // флаг корректного кадра
     hdlc_packet_typedef rx_data;        // полезная часть данных (без FD и FCS)
     uint8_t buf_index;                  // индекс для записи в буффер rx_data
     uint8_t current_byte;               // текущий прочитанный байт
@@ -82,10 +82,10 @@ void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs
 void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo);
 
 // функция приёма одно байта из FIFO
-void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, const char* sender_name);
+void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, uint8_t expected_addr, const char* sender_name);
 
 // функция проверки корректности кадра
-void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, uint8_t* internal_buffer, const char* sender_name);
+bool HDLC_FrameCorrect(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, const char* sender_name);
 
 // функция выполнения принятой команды
 void ProcessCommand(uint8_t command, const uint8_t* input_data, uint8_t* output_data);

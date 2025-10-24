@@ -1,5 +1,6 @@
 #include "hdlc.h"
 #include <stdio.h>
+#include <stdbool.h>
 
 uint8_t internal_master_tx_buffer[HDLC_INFO_SIZE]=USER_INFO_PACK;       // внутренняя память ведущего на отправку (содержит информационное поле)
 uint8_t internal_slave_rx_buffer[HDLC_INFO_SIZE+1];                     // внутренняя память ведомого на приём (содержит команду и информационное поле)
@@ -36,7 +37,7 @@ void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)
 {
     rx_context->fd_received=false;
     rx_context->frame_assembled=false;
-    rx_context->frame_verified=false;                
+    rx_context->frame_correct=false;                
     rx_context->buf_index=0;
     rx_context->escape_next_byte=false;
     rx_context->current_byte=0;
@@ -77,6 +78,57 @@ void HDLC_CalculateFCS(uint8_t *data, int length, uint8_t *fcs_msb, uint8_t *fcs
     // возвращаем байты в правильном порядке для HDLC
     *fcs_msb = crc & 0xFF;
     *fcs_lsb = (crc >> 8) & 0xFF;
+}
+
+// функция проверки кадра на корректность
+bool HDLC_FrameCorrect(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, const char* sender_name)
+{
+    // проверки на корректность формата сообщения
+    if(rx_context->buf_index != (HDLC_INFO_SIZE+4))
+    {
+        printf("%s:\tWrong frame size: (%d bytes, expected %d)\n", sender_name, rx_context->buf_index, HDLC_INFO_SIZE+4);
+        rx_context->frame_correct = false;
+        return false;
+    }
+    if(!rx_context->frame_assembled)
+    {
+        printf("%s:\tFrame not assembled\n", sender_name);
+        rx_context->frame_correct = false;
+        return false;
+    }
+    if (rx_context->rx_data.address != expected_addr) 
+    {
+        printf("%s:\tInvalid destination address (received: 0x%02X, expected: 0x%02X)\n", sender_name, rx_context->rx_data.address, expected_addr);
+        rx_context->frame_correct = false;
+        return false;
+    }
+    if (rx_context->rx_data.control != CMD_INVERSING_BYTES && rx_context->rx_data.control != CMD_MIRRORING_BYTES) 
+    {
+        printf("%s:\tUnknown command: 0x%02X\n", sender_name, rx_context->rx_data.control);
+        rx_context->frame_correct = false;
+        return false;
+    }
+
+    // Сравнение полученной FCS с расчитанной
+    uint16_t received_fcs=(rx_context->fcs_msb<<8)|(rx_context->fcs_lsb);
+    uint8_t fcs_data[HDLC_INFO_SIZE+2];
+    uint8_t calculated_fcs_msb, calculated_fcs_lsb;
+    fcs_data[0]=rx_context->rx_data.address;
+    fcs_data[1]=rx_context->rx_data.control;
+    memcpy(&fcs_data[2], rx_context->rx_data.information, HDLC_INFO_SIZE);
+
+    HDLC_CalculateFCS(fcs_data, 2 + HDLC_INFO_SIZE, &calculated_fcs_msb, &calculated_fcs_lsb);
+    uint16_t calculated_fcs = (calculated_fcs_msb << 8) | calculated_fcs_lsb;
+
+    if (received_fcs != calculated_fcs) 
+    {
+        printf("%s:\tInvalid FCS (received: 0x%04X, calculated: 0x%04X)\n", sender_name, received_fcs, calculated_fcs);
+        rx_context->frame_correct = false;
+        return false;
+    }
+
+    rx_context->frame_correct=true;
+    return true;
 }
 
 // функция отправки одно байта в FIFO
@@ -188,7 +240,7 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
 }
 
 // функция приёма одно байта из FIFO
-void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, const char* sender_name)
+void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, uint8_t expected_addr, const char* sender_name)
 {
     // проверки корректности
     if(FifoIsEmpty(fifo))                               return;
@@ -197,6 +249,10 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, c
 
     FifoReadByte(fifo, &rx_context->current_byte);
 
+    #ifdef RX_MORE_INFO
+    printf("Received:\t%02X\n", rx_context->current_byte);
+    #endif
+    
     // обработка ESCAPE последовательности
     if(rx_context->escape_next_byte) 
     {
@@ -217,11 +273,23 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, c
             {
                 rx_context->frame_assembled = true;
                 printf("%s:\tFD received - end of frame\n", sender_name);
+
+                // проверка FCS
+                if(HDLC_FrameCorrect(rx_context, expected_addr, sender_name))
+                {
+                    printf("%s:\tFrame validated successfully!\n", sender_name);
+                }
+                else
+                {
+                    printf("%s:\tFrame validation failed!\n", sender_name);
+                    HDLC_RxContextInit(rx_context);
+                }
             } 
             else
             {
                 rx_context->fd_received = true;
                 rx_context->buf_index = 0;
+                rx_context->frame_correct=false;
                 printf("%s:\tFD received - start of frame\n", sender_name);
             }
             return;
@@ -229,7 +297,7 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, c
     }
 
     // обработка данных (для всех кроме FD и ESC)
-    if(rx_context->fd_received)
+    if(rx_context->fd_received && !rx_context->escape_next_byte)
     {
         if(rx_context->buf_index == 0)
         {                          
@@ -261,58 +329,6 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, c
         }
         rx_context->buf_index++;
     }
-
-    #ifdef RX_MORE_INFO
-    printf("Received:\t%02X\n", rx_context->current_byte);
-    #endif
-}
-
-// функция проверки корректности кадра
-void HDLC_VerifyFrame(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, uint8_t* internal_buffer, const char* sender_name)
-{
-    printf("%s:\tVerifying frame...\n", sender_name);
-
-    // проверки на корректность формата сообщения
-    if(rx_context->buf_index != (HDLC_INFO_SIZE+4))
-    {
-        printf("%s:\tWrong frame size: (%d bytes, expected %d)\n", sender_name, rx_context->buf_index, HDLC_INFO_SIZE+4);
-        return;
-    }
-    if(!rx_context->frame_assembled)
-    {
-        printf("%s:\tFrame not assembled\n", sender_name);
-        return;
-    }
-    if (rx_context->rx_data.address != expected_addr) {
-        printf("%s:\tInvalid destination address (received: 0x%02X, expected: 0x%02X)\n", sender_name, rx_context->rx_data.address, expected_addr);
-        return;
-    }
-    if (rx_context->rx_data.control != CMD_INVERSING_BYTES && rx_context->rx_data.control != CMD_MIRRORING_BYTES) {
-        printf("%s:\tUnknown command: 0x%02X\n", sender_name, rx_context->rx_data.control);
-        return;
-    }
-
-    // Сравнение полученной FCS с расчитанной
-    uint16_t received_fcs=(rx_context->fcs_msb<<8)|(rx_context->fcs_lsb);
-    uint8_t fcs_data[HDLC_INFO_SIZE+2];
-    uint8_t calculated_fcs_msb, calculated_fcs_lsb;
-    fcs_data[0]=rx_context->rx_data.address;
-    fcs_data[1]=rx_context->rx_data.control;
-    memcpy(&fcs_data[2], rx_context->rx_data.information, HDLC_INFO_SIZE);
-
-    HDLC_CalculateFCS(fcs_data, 2 + HDLC_INFO_SIZE, &calculated_fcs_msb, &calculated_fcs_lsb);
-    uint16_t calculated_fcs = (calculated_fcs_msb << 8) | calculated_fcs_lsb;
-
-    if (received_fcs != calculated_fcs) 
-    {
-        printf("%s:\tInvalid FCS (received: 0x%04X, calculated: 0x%04X)\n", sender_name, received_fcs, calculated_fcs);
-        return;
-    }
-
-    // сохранение во внутренний буффер
-    internal_buffer[0] = rx_context->rx_data.control;
-    memcpy(&internal_buffer[1], rx_context->rx_data.information, HDLC_INFO_SIZE);
-    rx_context->frame_verified=true;
 }
 
 // функция выполнения принятой команды

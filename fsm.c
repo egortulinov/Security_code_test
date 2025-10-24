@@ -40,7 +40,6 @@ void FSM_Master(void)
                     {
                         frame_sent=true;
                         printf("Master:\tFrame sent completely!\n");
-                        printf("Master:\tWaiting for reply...\n");
                     }
                 }
                 else
@@ -68,7 +67,7 @@ void FSM_Master(void)
 
             // ожидаем флаг начала передачи от ведомого
             if (!FifoIsEmpty(&fifo_stm))
-                HDLC_ReceiveByte(&master_rx_context, &fifo_stm, "Master");
+                HDLC_ReceiveByte(&master_rx_context, &fifo_stm, HDLC_MASTER_ADDR, "Master");
             else
                 printf("Master:\tFIFO is empty, waiting...\n");
 
@@ -82,9 +81,9 @@ void FSM_Master(void)
             // проверка на таймаута
             if (master_timeout_deadline != 0 && CHECK_TIMEOUT(master_timeout_deadline))
             {
-                printf("Master:\tNo reply received. Sending again...\n");
                 HDLC_RxContextInit(&master_rx_context);
                 master_state = MASTER_PREPARE_STATE;
+                printf("Master:\tNo reply received. Sending again...\n");
             }
             break;
 
@@ -92,35 +91,29 @@ void FSM_Master(void)
             
             // приём ответа от ведомого 
             if (!FifoIsEmpty(&fifo_stm)) 
-                HDLC_ReceiveByte(&master_rx_context, &fifo_stm, "Master");
+                HDLC_ReceiveByte(&master_rx_context, &fifo_stm, HDLC_MASTER_ADDR, "Master");
             else
                 printf("Master:\tFIFO is empty, waiting...\n");
 
-            if(master_rx_context.frame_assembled)
+            if(master_rx_context.frame_assembled && master_rx_context.frame_correct)
+            {
                 master_state=MASTER_PROCESSING_STATE;
-
+                printf("Master:\tFrame received correctly!\n");
+            }
+            else if(master_rx_context.frame_assembled && !master_rx_context.frame_correct)
+            {
+                printf("Master:\tFrame is incorrect!\n");
+                HDLC_RxContextInit(&master_rx_context);
+                master_state = MASTER_PREPARE_STATE;
+            }
             break;
 
         case MASTER_PROCESSING_STATE:
 
-            // проверка и обработка принятого ответа
-            if(!master_rx_context.frame_verified)
-            {
-                HDLC_VerifyFrame(&master_rx_context, HDLC_MASTER_ADDR, internal_master_rx_buffer, "Master");
-
-                if(!master_rx_context.frame_verified)
-                {
-                    printf("Master:\tReply verification failed! Sending again...\n");
-                    HDLC_RxContextInit(&master_rx_context);
-                    master_state=MASTER_PREPARE_STATE;
-                    break;
-                }
-                else
-                {
-                    printf("Master:\tReply verified successfully!\n");
-                }
-            }
-
+            // сохраняем данные во внутренний буффер
+            internal_master_rx_buffer[0]=master_rx_context.rx_data.control;
+            memcpy(&internal_master_rx_buffer[1], master_rx_context.rx_data.information, HDLC_INFO_SIZE);
+            
             // отладочный вывод
             printf("Master:\tReceived infromation:\t\t");
             for(int i=1; i<HDLC_INFO_SIZE+1; i++)
@@ -150,7 +143,7 @@ void FSM_Slave(void)
 
             // ожидаем флаг начала передачи от ведущего
             if (!FifoIsEmpty(&fifo_mts))
-                HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, "Slave");
+                HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, HDLC_SLAVE_ADDR, "Slave");
             else
                 printf("Slave:\tFIFO is empty, waiting...\n");
 
@@ -165,44 +158,35 @@ void FSM_Slave(void)
 
             // приём сообщения от ведущего
             if (!FifoIsEmpty(&fifo_mts))
-                HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, "Slave");
+                HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, HDLC_SLAVE_ADDR, "Slave");
             else
                 printf("Slave:\tFIFO is empty, waiting...\n");
 
-            if(slave_rx_context.frame_assembled) 
+            if(slave_rx_context.frame_assembled && slave_rx_context.frame_correct)
             {
                 printf("Slave:\tFrame received completely!\n");
                 slave_state = SLAVE_PROCESSING_STATE;
+            }
+            else if(slave_rx_context.frame_assembled && !slave_rx_context.frame_correct)
+            {
+                printf("Slave:\tFrame is incorrect!");
+                HDLC_RxContextInit(&slave_rx_context);
+                slave_state = SLAVE_WAITING_CMD_STATE;
             }
             break;
 
         case SLAVE_PROCESSING_STATE:
 
             // проверка и обработка принятого сообщения
-            if(!slave_rx_context.frame_verified)
+            internal_slave_rx_buffer[0]=slave_rx_context.rx_data.control;
+            memcpy(&internal_slave_rx_buffer[1], slave_rx_context.rx_data.information, HDLC_INFO_SIZE);
+
+            // отладочная информация
+            printf("Slave:\tReceived information:\t\t");
+            for(int i=1; i<HDLC_INFO_SIZE+1; i++)
             {
-                HDLC_VerifyFrame(&slave_rx_context, HDLC_SLAVE_ADDR, internal_slave_rx_buffer, "Slave");
-
-                if(!slave_rx_context.frame_verified)
-                {
-                    printf("Slave:\tFrame verification failed!!!\n");
-                    printf("Slave:\tWaiting for message again\n");
-                    HDLC_RxContextInit(&slave_rx_context);
-                    slave_state = SLAVE_WAITING_CMD_STATE;
-                    break;
-                }
-                else
-                {
-                    printf("Slave:\tFrame verified successfully!\n");
-                }
+                printf("%02X ", internal_slave_rx_buffer[i]);
             }
-
-                // отладочная информация
-                printf("Slave:\tReceived information:\t\t");
-                for(int i=1; i<HDLC_INFO_SIZE+1; i++)
-                {
-                    printf("%02X ", internal_slave_rx_buffer[i]);
-                }
             printf("\n");
 
             ProcessCommand(internal_slave_rx_buffer[0], &internal_slave_rx_buffer[1], internal_slave_tx_buffer);
