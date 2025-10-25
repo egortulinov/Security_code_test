@@ -291,6 +291,7 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, u
                 rx_context->buf_index = 0;
                 rx_context->frame_correct=false;
                 printf("%s:\tFD received - start of frame\n", sender_name);
+                printf("%s:\tStart receiving frame...\n", sender_name);
             }
             return;
         }
@@ -329,6 +330,15 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, u
         }
         rx_context->buf_index++;
     }
+}
+
+// функция проверки нового сообщения
+bool HDLC_CheckNewMessage(fifo_typedef* fifo)
+{
+    if(FifoIsEmpty(fifo))     return false;
+
+    uint8_t first_byte=fifo->buffer[fifo->read_index];
+    return(first_byte==HDLC_FD_FLAG);
 }
 
 // функция выполнения принятой команды

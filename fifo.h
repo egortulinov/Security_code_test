@@ -50,6 +50,12 @@ static inline void FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)
     fifo->read_index=(fifo->read_index+1)%FIFO_SIZE;                                      
 }
 
+// функция сброса индексов FIFO
+static inline void FifoIndexReset(fifo_typedef* fifo)
+{
+    fifo->read_index = fifo->write_index;
+}
+
 // отладочная функция
 static inline void DebugFifoState(fifo_typedef* fifo, const char* fifo_name)
 {

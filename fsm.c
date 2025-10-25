@@ -20,9 +20,10 @@ void FSM_Master(void)
             printf("----------------------------------------------------------\n");
             printf("Master:\tPreparing message with command: 0x%02X to unit: 0x%02X \n", USER_COMMAND, HDLC_SLAVE_ADDR);
 
+            FifoIndexReset(&fifo_mts);
             HDLC_TxContextInit(&master_tx_context, HDLC_SLAVE_ADDR, USER_COMMAND, internal_master_tx_buffer);
             HDLC_RxContextInit(&master_rx_context);
-
+            
             frame_sent=false;
             printf("Master:\tStart transmitting...\n");
             master_state=MASTER_TX_STATE;
@@ -81,7 +82,6 @@ void FSM_Master(void)
             // проверка на таймаута
             if (master_timeout_deadline != 0 && CHECK_TIMEOUT(master_timeout_deadline))
             {
-                HDLC_RxContextInit(&master_rx_context);
                 master_state = MASTER_PREPARE_STATE;
                 printf("Master:\tNo reply received. Sending again...\n");
             }
@@ -149,7 +149,6 @@ void FSM_Slave(void)
 
             if(slave_rx_context.fd_received && !slave_rx_context.frame_assembled)
             {
-                printf("Slave:\tStart receiving frame...\n");
                 slave_state=SLAVE_RX_STATE;
             }
             break;
@@ -198,6 +197,19 @@ void FSM_Slave(void)
 
         case SLAVE_TX_STATE:
 
+            if(HDLC_CheckNewMessage(&fifo_mts))
+            {
+                printf("Slave:\tNew message detected. Going receive...\n");
+
+                FifoIndexReset(&fifo_stm);
+                HDLC_RxContextInit(&slave_rx_context);
+                slave_state=SLAVE_WAITING_CMD_STATE;
+                processing_complete = false;
+                reply_sent = false;
+
+                HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, HDLC_SLAVE_ADDR, "Slave");
+                return;
+            }
             // отправка ответа ведущему
             if(processing_complete && !reply_sent)
             {

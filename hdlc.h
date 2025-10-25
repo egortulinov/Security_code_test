@@ -87,6 +87,9 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, u
 // функция проверки корректности кадра
 bool HDLC_FrameCorrect(hdlc_rx_context_typedef* rx_context, uint8_t expected_addr, const char* sender_name);
 
+// функция проверки нового сообщения
+bool HDLC_CheckNewMessage(fifo_typedef* fifo);
+
 // функция выполнения принятой команды
 void ProcessCommand(uint8_t command, const uint8_t* input_data, uint8_t* output_data);
 
