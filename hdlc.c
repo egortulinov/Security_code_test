@@ -221,7 +221,7 @@ void HDLC_SendByte(hdlc_tx_context_typedef* tx_context, fifo_typedef* fifo)
         if(FifoIsFull(fifo)) return;
         FifoWriteByte(fifo, tx_context->current_byte);
         
-        // Переход к следующему stage
+        // Переход к следующему полю
         if(tx_context->tx_stage == TX_STAGE_INFORMATION) 
         {
             if(tx_context->info_index >= HDLC_INFO_SIZE) 
@@ -290,8 +290,8 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, u
                 rx_context->fd_received = true;
                 rx_context->buf_index = 0;
                 rx_context->frame_correct=false;
+                printf("%s:\tNew message detected! Start receiving...\n", sender_name);
                 printf("%s:\tFD received - start of frame\n", sender_name);
-                printf("%s:\tStart receiving frame...\n", sender_name);
             }
             return;
         }
@@ -330,15 +330,6 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, u
         }
         rx_context->buf_index++;
     }
-}
-
-// функция проверки нового сообщения
-bool HDLC_CheckNewMessage(fifo_typedef* fifo)
-{
-    if(FifoIsEmpty(fifo))     return false;
-
-    uint8_t first_byte=fifo->buffer[fifo->read_index];
-    return(first_byte==HDLC_FD_FLAG);
 }
 
 // функция выполнения принятой команды

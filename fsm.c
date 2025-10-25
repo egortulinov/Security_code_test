@@ -74,7 +74,6 @@ void FSM_Master(void)
 
             if(master_rx_context.fd_received && !master_rx_context.frame_assembled)
             {
-                printf("Master:\tStart receiving frame...\n");
                 master_state=MASTER_RX_STATE;
                 master_timeout_deadline = 0;
             }
@@ -192,24 +191,27 @@ void FSM_Slave(void)
     
             processing_complete = true;
             reply_sent = false;
+            HDLC_RxContextInit(&slave_rx_context);
             slave_state = SLAVE_TX_STATE;
             break;
 
         case SLAVE_TX_STATE:
 
-            if(HDLC_CheckNewMessage(&fifo_mts))
+            // При получении нового сообщения - прерываем отправку
+            if (!FifoIsEmpty(&fifo_mts)) 
             {
-                printf("Slave:\tNew message detected. Going receive...\n");
-
-                FifoIndexReset(&fifo_stm);
-                HDLC_RxContextInit(&slave_rx_context);
-                slave_state=SLAVE_WAITING_CMD_STATE;
-                processing_complete = false;
-                reply_sent = false;
-
                 HDLC_ReceiveByte(&slave_rx_context, &fifo_mts, HDLC_SLAVE_ADDR, "Slave");
-                return;
+        
+                if (slave_rx_context.fd_received && !slave_rx_context.frame_assembled) 
+                {
+                    FifoIndexReset(&fifo_stm);
+                    slave_state = SLAVE_RX_STATE;
+                    processing_complete = false;
+                    reply_sent = false;
+                    return;
+                }
             }
+
             // отправка ответа ведущему
             if(processing_complete && !reply_sent)
             {

@@ -53,7 +53,7 @@ static inline void FifoReadByte(fifo_typedef* fifo, uint8_t* rx_data)
 // функция сброса индексов FIFO
 static inline void FifoIndexReset(fifo_typedef* fifo)
 {
-    fifo->read_index = fifo->write_index;
+    fifo->write_index = fifo->read_index;
 }
 
 // отладочная функция
