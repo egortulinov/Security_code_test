@@ -27,7 +27,8 @@ static inline void FifoInit(fifo_typedef* fifo)
 // функция проверки FIFO на полноту
 static inline bool FifoIsFull(fifo_typedef* fifo)      
 {
-    return (fifo->write_index-fifo->read_index==FIFO_SIZE);     // если полон, то возвращается 1
+    return (((fifo->write_index%FIFO_SIZE) == (fifo->read_index%FIFO_SIZE)) &&
+            (fifo->write_index!=fifo->read_index));           // если полон, то возвращается 1
 }
 
 // проверка FIFO на отсутствие данных
