@@ -29,8 +29,7 @@ extern fsm_state_slave_typedef slave_state;     // состояние ведом
 extern fifo_typedef fifo_mts;                   // FIFO Master To Slave
 extern fifo_typedef fifo_stm;                   // FIFO Slave To Master
 
-extern uint64_t master_timeout_deadline;
-extern uint64_t master_retry_deadline;
+extern timeout_typedef master_timeout;                // таймаут для получения ответа
 
 // конечный автомат ведущего
 void FSM_Master(void);

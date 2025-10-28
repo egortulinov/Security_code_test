@@ -4,8 +4,7 @@
 fsm_state_master_typedef master_state = MASTER_PREPARE_STATE;     // инициализация мастера в отправку
 fsm_state_slave_typedef slave_state = SLAVE_WAITING_CMD_STATE;    // инициализация слейва в ожидание флага
 
-uint64_t master_timeout_deadline = 0;
-uint64_t master_retry_deadline = 0;
+timeout_typedef master_timeout = {0};
 
 // конечный автомат ведущего
 void FSM_Master(void)
@@ -59,7 +58,7 @@ void FSM_Master(void)
                 printf("\n");
 
                 printf("Master:\tWaiting for reply from unit 0x%02X...\n", master_tx_context.tx_data.address);
-                master_timeout_deadline = SET_TIMEOUT(MASTER_WAIT_REPLY_MS);
+                SetTimeout(&master_timeout, MASTER_WAIT_REPLY_MS);
                 master_state=MASTER_WAITING_REPLY_STATE;
             }
             break;
@@ -75,11 +74,11 @@ void FSM_Master(void)
             if(master_rx_context.fd_received && !master_rx_context.frame_assembled)
             {
                 master_state=MASTER_RX_STATE;
-                master_timeout_deadline = 0;
+                master_timeout.timeout_duration=0;
             }
 
             // проверка на таймаута
-            if (master_timeout_deadline != 0 && CHECK_TIMEOUT(master_timeout_deadline))
+            if (CheckTimeoutPassed(&master_timeout) && master_timeout.timeout_duration!=0)
             {
                 master_state = MASTER_PREPARE_STATE;
                 printf("Master:\tNo reply received. Sending again...\n");
