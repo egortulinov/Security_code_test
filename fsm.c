@@ -20,7 +20,7 @@ void FSM_Master(void)
             printf("Master:\tPreparing message with command: 0x%02X to unit: 0x%02X \n", USER_COMMAND, HDLC_SLAVE_ADDR);
 
             FifoIndexReset(&fifo_mts);
-            HDLC_TxContextInit(&master_tx_context, HDLC_SLAVE_ADDR, USER_COMMAND, internal_master_tx_buffer);
+            HDLC_TxContextInit(&master_tx_context, HDLC_SLAVE_ADDR, USER_COMMAND);
             HDLC_RxContextInit(&master_rx_context);
             
             frame_sent=false;
@@ -53,7 +53,7 @@ void FSM_Master(void)
                 printf("Master:\tTransmitted information:\t");
                 for(int i=0; i<HDLC_INFO_SIZE; i++)
                 {
-                    printf("%02X ", internal_master_tx_buffer[i]);
+                    printf("%02X ", master_tx_context.tx_data.information[i]);
                 }
                 printf("\n");
 
@@ -109,14 +109,13 @@ void FSM_Master(void)
         case MASTER_PROCESSING_STATE:
 
             // сохраняем данные во внутренний буффер
-            internal_master_rx_buffer[0]=master_rx_context.rx_data.control;
-            memcpy(&internal_master_rx_buffer[1], master_rx_context.rx_data.information, HDLC_INFO_SIZE);
+            HDLC_StoreRxData(&master_rx_context);
             
             // отладочный вывод
             printf("Master:\tReceived infromation:\t\t");
-            for(int i=1; i<HDLC_INFO_SIZE+1; i++)
+            for(int i=0; i<HDLC_INFO_SIZE; i++)
             {
-                printf("%02X ", internal_master_rx_buffer[i]);
+                printf("%02X ", master_rx_context.rx_data.information[i]);
             }
             printf("\n");
 
@@ -174,19 +173,19 @@ void FSM_Slave(void)
 
         case SLAVE_PROCESSING_STATE:
 
-            // проверка и обработка принятого сообщения
-            internal_slave_rx_buffer[0]=slave_rx_context.rx_data.control;
-            memcpy(&internal_slave_rx_buffer[1], slave_rx_context.rx_data.information, HDLC_INFO_SIZE);
+            // сохранение и обработка принятого сообщения
+            HDLC_StoreRxData(&slave_rx_context);
 
             // отладочная информация
             printf("Slave:\tReceived information:\t\t");
-            for(int i=1; i<HDLC_INFO_SIZE+1; i++)
+            for(int i=0; i<HDLC_INFO_SIZE; i++)
             {
-                printf("%02X ", internal_slave_rx_buffer[i]);
+                printf("%02X ", slave_rx_context.rx_data.information[i]);
             }
             printf("\n");
 
-            ProcessCommand(internal_slave_rx_buffer[0], &internal_slave_rx_buffer[1], internal_slave_tx_buffer);
+            uint8_t command_for_reply = slave_rx_context.rx_data.control;       // переменная для хранения команды
+            ProcessCommand(&slave_rx_context, &slave_tx_context);
     
             processing_complete = true;
             reply_sent = false;
@@ -214,7 +213,7 @@ void FSM_Slave(void)
             // отправка ответа ведущему
             if(processing_complete && !reply_sent)
             {
-                HDLC_TxContextInit(&slave_tx_context, HDLC_MASTER_ADDR, internal_slave_rx_buffer[0], internal_slave_tx_buffer);
+                HDLC_TxContextInit(&slave_tx_context, HDLC_MASTER_ADDR, command_for_reply);
                 printf("Slave:\tPreparing reply to master...\n");
                 reply_sent=true;
             }
@@ -237,7 +236,7 @@ void FSM_Slave(void)
                     printf("Slave:\tTransmitted information:\t");
                     for(int i=0; i<HDLC_INFO_SIZE; i++)
                     {
-                        printf("%02X ", internal_slave_tx_buffer[i]);
+                        printf("%02X ", slave_tx_context.tx_data.information[i]);
                     }
                     printf("\n");
                     printf("Slave:\tWaiting for next message...\n");
