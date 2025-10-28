@@ -46,6 +46,12 @@ static inline bool CheckTimeoutPassed(timeout_typedef* timeout)
     else                                    // если переполнения не было
         time_passed=current_time-timeout->start_time;
 
-    return(time_passed>=timeout->timeout_duration);
+    return(time_passed >= timeout->timeout_duration);
+}
+
+// функция очистки таймаута
+static inline void ClearTimeout(timeout_typedef* timeout)
+{
+    timeout->timeout_duration=0;
 }
 #endif

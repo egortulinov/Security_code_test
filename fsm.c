@@ -74,7 +74,7 @@ void FSM_Master(void)
             if(master_rx_context.fd_received && !master_rx_context.frame_assembled)
             {
                 master_state=MASTER_RX_STATE;
-                master_timeout.timeout_duration=0;
+                ClearTimeout(&master_timeout);
             }
 
             // проверка на таймаута
