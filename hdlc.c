@@ -2,18 +2,14 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-uint8_t internal_master_tx_buffer[HDLC_INFO_SIZE]=USER_INFO_PACK;       // внутренняя память ведущего на отправку (содержит информационное поле)
-uint8_t internal_slave_rx_buffer[HDLC_INFO_SIZE+1];                     // внутренняя память ведомого на приём (содержит команду и информационное поле)
-uint8_t internal_slave_tx_buffer[HDLC_INFO_SIZE];                       // внутренняя память ведомого на отправку (содержит информационное поле)
-uint8_t internal_master_rx_buffer[HDLC_INFO_SIZE+1];                    // внутренняя память ведущего на приём (содержит команду и информационное поле)
 
-hdlc_tx_context_typedef master_tx_context   = {0};      // инициализация структуры для отправки ведущим
-hdlc_rx_context_typedef slave_rx_context    = {0};      // инициализация структуры для приема ведомым
-hdlc_tx_context_typedef slave_tx_context    = {0};      // инициализация структуры для отправки ведомым (отправка ответ)
-hdlc_rx_context_typedef master_rx_context   = {0};      // инициализация структуры для приёма ведущим (получение ответа)
+hdlc_tx_context_typedef master_tx_context   = {.internal_tx_buffer=USER_INFO_PACK};     // инициализация структуры для отправки ведущим
+hdlc_rx_context_typedef slave_rx_context    = {0};                                      // инициализация структуры для приема ведомым
+hdlc_tx_context_typedef slave_tx_context    = {0};                                      // инициализация структуры для отправки ведомым (отправка ответ)
+hdlc_rx_context_typedef master_rx_context   = {0};                                      // инициализация структуры для приёма ведущим (получение ответа)
 
 // функция для настройки контекста отправляемого сообщения
-void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination_addr, uint8_t cmd, const uint8_t* internal_info_buffer) 
+void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination_addr, uint8_t cmd) 
 {
     uint8_t fcs_data[HDLC_INFO_SIZE+2];                 // данные для который считается FCS
 
@@ -23,7 +19,7 @@ void HDLC_TxContextInit(hdlc_tx_context_typedef* tx_context, uint8_t destination
     tx_context->escape_next_byte=false;
     tx_context->tx_data.address=destination_addr;
     tx_context->tx_data.control=cmd;
-    memcpy(tx_context->tx_data.information, internal_info_buffer, HDLC_INFO_SIZE);
+    memcpy(tx_context->tx_data.information, tx_context->internal_tx_buffer, HDLC_INFO_SIZE);
 
     // вычисление FCS
     fcs_data[0]=tx_context->tx_data.address;
@@ -46,6 +42,7 @@ void HDLC_RxContextInit(hdlc_rx_context_typedef* rx_context)
     rx_context->fcs_lsb=0;
     rx_context->fcs_msb=0;
     memset(rx_context->rx_data.information, 0, HDLC_INFO_SIZE);
+    memset(rx_context->internal_rx_buffer, 0, HDLC_INFO_SIZE+1);
 }
 
 // расчет FCS для HDLC (доработанный) с https://github.com/jmswu/crc16
@@ -129,6 +126,13 @@ bool HDLC_FrameCorrect(hdlc_rx_context_typedef* rx_context, uint8_t expected_add
 
     rx_context->frame_correct=true;
     return true;
+}
+
+// функция сохранения принятого сообщения во внутренний буффер
+void HDLC_StoreRxData(hdlc_rx_context_typedef* rx_context)
+{
+    rx_context->internal_rx_buffer[0]=rx_context->rx_data.control;
+    memcpy(&rx_context->internal_rx_buffer[1], rx_context->rx_data.information, HDLC_INFO_SIZE);
 }
 
 // функция отправки одно байта в FIFO
@@ -333,29 +337,29 @@ void HDLC_ReceiveByte(hdlc_rx_context_typedef* rx_context, fifo_typedef* fifo, u
 }
 
 // функция выполнения принятой команды
-void ProcessCommand(uint8_t command, const uint8_t* input_data, uint8_t* output_data)   
+void ProcessCommand(hdlc_rx_context_typedef* rx_context, hdlc_tx_context_typedef* tx_context)   
 {
-    switch (command)
+    switch (rx_context->internal_rx_buffer[0])
     {
         case CMD_INVERSING_BYTES:           // инверсия байтов
-            printf("Slave:\tProcessing command 0x%02X: Inversing bytes\n", command);
+            printf("Slave:\tProcessing command 0x%02X: Inversing bytes\n", rx_context->internal_rx_buffer[0]);
             for(int i=0; i<HDLC_INFO_SIZE; i++)
             {
-                output_data[i]=~input_data[i];
+                tx_context->internal_tx_buffer[i]=~rx_context->internal_rx_buffer[i+1];
             }
             break;
         
         case CMD_MIRRORING_BYTES:           // отражение байтов
-            printf("Slave:\tProcessing command 0x%02X: Mirroring bytes\n", command);
+            printf("Slave:\tProcessing command 0x%02X: Mirroring bytes\n", rx_context->internal_rx_buffer[0]);
             for(int i=0; i<HDLC_INFO_SIZE; i++)
             {
-                output_data[i]=input_data[HDLC_INFO_SIZE-1-i];
+                tx_context->internal_tx_buffer[i]=rx_context->internal_rx_buffer[HDLC_INFO_SIZE-i];
             }
             break;
 
         default:
-            printf("Slave:\tUnknown command 0x%02X\n", command);
-            memcpy(output_data, input_data, HDLC_INFO_SIZE);
+            printf("Slave:\tUnknown command 0x%02X\n", rx_context->internal_rx_buffer[0]);
+            memcpy(tx_context->internal_tx_buffer, &rx_context->internal_rx_buffer[1], HDLC_INFO_SIZE);
             break;
     }
 }
